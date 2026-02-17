@@ -53,6 +53,14 @@ class TrainerHistory:
     grad_norm: list[float] = field(default_factory=list)
 
 
+@dataclass
+class EarlyStoppingState:
+    patience: int = 25
+    min_delta: float = 0.0
+    best_loss: float = float("inf")
+    bad_epochs: int = 0
+
+
 class FeynmanKacTrainer:
     """Training orchestrator for Feynman-Kac PINN."""
 
@@ -65,6 +73,8 @@ class FeynmanKacTrainer:
         scheduler_name: SchedulerName = "none",
         warmup: WarmupConfig = WarmupConfig(),
         max_grad_norm: Optional[float] = None,
+        early_stopping_patience: Optional[int] = None,
+        early_stopping_min_delta: float = 0.0,
     ):
         self.model = model
         self.problem = problem
@@ -90,6 +100,14 @@ class FeynmanKacTrainer:
         self.max_grad_norm = max_grad_norm
         self.history = TrainerHistory()
         self.global_step = 0
+        self.early_stopping = (
+            EarlyStoppingState(
+                patience=early_stopping_patience,
+                min_delta=early_stopping_min_delta,
+            )
+            if early_stopping_patience is not None
+            else None
+        )
 
     def _sample_training_batch(self, batch_size: int, n_mc_paths: int) -> tuple[torch.Tensor, torch.Tensor]:
         x = self.problem.domain.sample_interior(batch_size, device=self.device)
@@ -153,7 +171,18 @@ class FeynmanKacTrainer:
         self.history.val_loss.append(val_loss)
         if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
             self.scheduler.step(val_loss)
+        if self.early_stopping is not None:
+            if val_loss < self.early_stopping.best_loss - self.early_stopping.min_delta:
+                self.early_stopping.best_loss = val_loss
+                self.early_stopping.bad_epochs = 0
+            else:
+                self.early_stopping.bad_epochs += 1
         return val_loss
+
+    def should_stop_early(self) -> bool:
+        if self.early_stopping is None:
+            return False
+        return self.early_stopping.bad_epochs >= self.early_stopping.patience
 
 
 __all__ = [
