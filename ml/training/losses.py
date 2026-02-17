@@ -32,4 +32,12 @@ def mc_huber_loss(
     return F.huber_loss(predictions, targets, delta=delta)
 
 
-__all__ = ["mc_mse_loss", "weighted_mc_mse_loss", "mc_huber_loss"]
+def l2_parameter_penalty(module: torch.nn.Module, weight_decay: float) -> torch.Tensor:
+    """Explicit L2 penalty helper for optional regularization logging."""
+    penalty = torch.zeros((), device=next(module.parameters()).device)
+    for param in module.parameters():
+        penalty = penalty + param.pow(2).sum()
+    return 0.5 * weight_decay * penalty
+
+
+__all__ = ["mc_mse_loss", "weighted_mc_mse_loss", "mc_huber_loss", "l2_parameter_penalty"]
