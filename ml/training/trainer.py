@@ -59,6 +59,7 @@ class FeynmanKacTrainer:
         device: Optional[str] = None,
         scheduler_name: SchedulerName = "none",
         warmup: WarmupConfig = WarmupConfig(),
+        max_grad_norm: Optional[float] = None,
     ):
         self.model = model
         self.problem = problem
@@ -72,6 +73,7 @@ class FeynmanKacTrainer:
             total_steps=1,
         )
         self.warmup = warmup
+        self.max_grad_norm = max_grad_norm
         self.history = TrainerHistory()
         self.global_step = 0
 
@@ -104,6 +106,8 @@ class FeynmanKacTrainer:
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
+        if self.max_grad_norm is not None:
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
         self.optimizer.step()
         self.global_step += 1
 
