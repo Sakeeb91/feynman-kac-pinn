@@ -55,10 +55,26 @@ class HarmonicOscillatorND(Problem):
         return self._domain
 
     def boundary_condition(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
+        x = self.validate_points(x)
+        return self.analytical_solution(x)
 
     def potential(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
+        x = self.validate_points(x)
+        mass = torch.as_tensor(self._params.mass, device=x.device, dtype=x.dtype)
+        omega = torch.as_tensor(self._params.omega, device=x.device, dtype=x.dtype)
+        radius_sq = (x**2).sum(dim=-1)
+        return 0.5 * mass * omega**2 * radius_sq
+
+    @property
+    def ground_state_energy(self) -> float:
+        return 0.5 * self.dimension * self._params.hbar * self._params.omega
+
+    def analytical_solution(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.validate_points(x)
+        alpha = (self._params.mass * self._params.omega) / self._params.hbar
+        norm = (alpha / torch.pi) ** (self.dimension / 4)
+        radius_sq = (x**2).sum(dim=-1)
+        return norm * torch.exp(-0.5 * alpha * radius_sq)
 
     def get_parameters(self) -> dict[str, float | int]:
         return self._params.__dict__.copy()
