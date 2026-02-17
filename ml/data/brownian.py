@@ -116,6 +116,9 @@ def simulate_brownian_paths(
     potential_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     device: Optional[str] = None,
     seed: Optional[int] = None,
+    antithetic: bool = False,
+    stratified: bool = False,
+    progress_callback: Optional[ProgressCallback] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Simulate Brownian motion paths until domain exit.
@@ -149,18 +152,12 @@ def simulate_brownian_paths(
     """
     if device is None:
         device = get_device()
-
-    if seed is not None:
-        torch.manual_seed(seed)
-
-    # Validate inputs
-    if x0.dim() != 2:
-        raise ValueError(f"x0 must be 2D (batch_size, dim), got shape {x0.shape}")
-
+    _validate_inputs(x0=x0, dt=dt, max_steps=max_steps, domain=domain)
     batch_size, dim = x0.shape
-
-    if dim != domain.dim:
-        raise ValueError(f"x0 dimension ({dim}) doesn't match domain ({domain.dim})")
+    generator: Optional[torch.Generator] = None
+    if seed is not None:
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
 
     # Move to device
     x0 = x0.to(device)
@@ -189,7 +186,16 @@ def simulate_brownian_paths(
         current_time = (step + 1) * dt
 
         # Generate Brownian increments only for active paths
-        dW = torch.randn(n_active, dim, device=device) * sqrt_dt
+        dW = _sample_normal_increments(
+            n_active=n_active,
+            dim=dim,
+            sqrt_dt=sqrt_dt,
+            device=device,
+            dtype=x0.dtype,
+            stratified=stratified,
+            antithetic=antithetic,
+            generator=generator,
+        )
 
         # Store previous positions for interpolation
         prev_positions = positions[active].clone()
@@ -215,6 +221,8 @@ def simulate_brownian_paths(
             )
             exit_times[newly_exited] = current_time
             active[newly_exited] = False
+        if progress_callback is not None:
+            progress_callback(step + 1, max_steps, n_active)
 
     # Handle paths that didn't exit (timeout)
     if active.any():
