@@ -213,6 +213,38 @@ class FeynmanKacTrainer:
                     break
         return self.history
 
+    def save_checkpoint(self, path: str | Path) -> Path:
+        """Persist model, optimizer, scheduler, and history to disk."""
+        checkpoint_path = Path(path)
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "model_state": self.model.state_dict(),
+            "optimizer_state": self.optimizer.state_dict(),
+            "scheduler_state": None if self.scheduler is None else self.scheduler.state_dict(),
+            "warmup_state": None if self.warmup_scheduler is None else self.warmup_scheduler.state_dict(),
+            "global_step": self.global_step,
+            "history": self.history.__dict__,
+            "model_config": self.model.architecture_dict(),
+        }
+        torch.save(payload, checkpoint_path)
+        return checkpoint_path
+
+    def load_checkpoint(self, path: str | Path, strict: bool = True) -> dict[str, object]:
+        """Load checkpoint and restore optimizer/scheduler/history state."""
+        checkpoint_path = Path(path)
+        payload = torch.load(checkpoint_path, map_location=self.device)
+        self.model.load_state_dict(payload["model_state"], strict=strict)
+        self.optimizer.load_state_dict(payload["optimizer_state"])
+        if self.scheduler is not None and payload.get("scheduler_state") is not None:
+            self.scheduler.load_state_dict(payload["scheduler_state"])
+        if self.warmup_scheduler is not None and payload.get("warmup_state") is not None:
+            self.warmup_scheduler.load_state_dict(payload["warmup_state"])
+        self.global_step = int(payload.get("global_step", 0))
+        history = payload.get("history")
+        if isinstance(history, dict):
+            self.history = TrainerHistory(**history)
+        return payload
+
 
 __all__ = [
     "FKProblem",
