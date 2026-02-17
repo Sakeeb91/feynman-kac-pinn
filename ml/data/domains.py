@@ -261,6 +261,89 @@ class HyperEllipsoid:
         return f"HyperEllipsoid(center={c}, radii={r}, dim={self._dim})"
 
 
+def _sample_from_bounding_box(
+    low: torch.Tensor,
+    high: torch.Tensor,
+    n: int,
+    accept: callable,
+    device: str,
+    max_draw_multiplier: int = 16,
+) -> torch.Tensor:
+    """Generic rejection sampler from axis-aligned bounding box."""
+    samples: list[torch.Tensor] = []
+    remaining = n
+    draw_count = 0
+    while remaining > 0:
+        draw_count += 1
+        if draw_count > max_draw_multiplier:
+            raise RuntimeError("rejection sampling failed to gather enough samples")
+        candidates = low + (high - low) * torch.rand(remaining * 4, low.numel(), device=device)
+        accepted = candidates[accept(candidates)]
+        if accepted.numel() == 0:
+            continue
+        taken = accepted[:remaining]
+        samples.append(taken)
+        remaining -= taken.shape[0]
+    return torch.cat(samples, dim=0)
+
+
+class Union:
+    """Composite domain representing a union of subdomains."""
+
+    def __init__(self, *domains: Domain):
+        if len(domains) < 2:
+            raise ValueError("Union requires at least two subdomains")
+        dim = domains[0].dim
+        if any(d.dim != dim for d in domains):
+            raise ValueError("all subdomains must have the same dimension")
+        self._domains = tuple(domains)
+        self._dim = dim
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def contains(self, x: torch.Tensor) -> torch.Tensor:
+        x = _as_points(x, self._dim)
+        out = torch.zeros(x.shape[0], dtype=torch.bool, device=x.device)
+        for domain in self._domains:
+            out |= domain.contains(x)
+        return out
+
+    def project_to_boundary(self, x: torch.Tensor) -> torch.Tensor:
+        x = _as_points(x, self._dim)
+        projections = [domain.project_to_boundary(x) for domain in self._domains]
+        stacked = torch.stack(projections, dim=0)
+        distances = torch.norm(stacked - x.unsqueeze(0), dim=-1)
+        closest = distances.argmin(dim=0)
+        rows = torch.arange(x.shape[0], device=x.device)
+        return stacked[closest, rows]
+
+    def sample_interior(self, n: int, device: str = "cpu") -> torch.Tensor:
+        _check_sample_count(n)
+        low, high = self.bounding_box(device=device)
+        return _sample_from_bounding_box(low, high, n, self.contains, device=device)
+
+    def sample_boundary(self, n: int, device: str = "cpu") -> torch.Tensor:
+        _check_sample_count(n)
+        points_per_domain = max(1, n // len(self._domains))
+        points = [domain.sample_boundary(points_per_domain, device=device) for domain in self._domains]
+        merged = torch.cat(points, dim=0)
+        if merged.shape[0] < n:
+            extra = self._domains[0].sample_boundary(n - merged.shape[0], device=device)
+            merged = torch.cat([merged, extra], dim=0)
+        return merged[:n]
+
+    def bounding_box(self, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+        bounds = [domain.bounding_box(device=device) for domain in self._domains]
+        lows = torch.stack([b[0] for b in bounds], dim=0)
+        highs = torch.stack([b[1] for b in bounds], dim=0)
+        return lows.min(dim=0).values, highs.max(dim=0).values
+
+    def __repr__(self) -> str:
+        return f"Union(n_domains={len(self._domains)}, dim={self._dim})"
+
+
 class Interval(Hypercube):
     """1D interval domain [low, high]."""
 
