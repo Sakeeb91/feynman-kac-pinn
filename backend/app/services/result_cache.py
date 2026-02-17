@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from threading import RLock
 
-from backend.app.models.result import SimulationResult
+from backend.app.models.common import ResultStatus, SimulationStatus, utc_now
+from backend.app.models.result import SimulationResult, TrainingHistory
+from backend.app.models.simulation import SimulationMetrics
 
 
 @dataclass
@@ -41,6 +43,34 @@ class ResultCache:
     def clear(self) -> None:
         with self._lock:
             self._results.clear()
+
+    def upsert_from_simulation(
+        self,
+        simulation_payload: dict,
+        history_payload: dict[str, list[float]] | None,
+    ) -> SimulationResult:
+        status = simulation_payload["status"]
+        if status == SimulationStatus.COMPLETED:
+            result_status = ResultStatus.READY
+        elif status in {SimulationStatus.RUNNING, SimulationStatus.QUEUED}:
+            result_status = ResultStatus.PARTIAL
+        else:
+            result_status = ResultStatus.NOT_READY
+
+        metrics = simulation_payload.get("metrics") or None
+        result = SimulationResult(
+            simulation_id=simulation_payload["id"],
+            problem_id=simulation_payload["problem_id"],
+            simulation_status=status,
+            result_status=result_status,
+            progress=simulation_payload.get("progress", 0.0),
+            metrics=None if metrics is None else SimulationMetrics(**metrics),
+            training_history=TrainingHistory(**(history_payload or {})),
+            visualization={"progress_curve": history_payload.get("train_loss", []) if history_payload else []},
+            updated_at=simulation_payload.get("updated_at", utc_now()),
+        )
+        self.set(result)
+        return result
 
 
 result_cache = ResultCache()
