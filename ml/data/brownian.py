@@ -14,9 +14,41 @@ where:
     - c is the potential/reaction term
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable, Optional, Tuple
+
 import torch
-from typing import Tuple, Optional, Callable
+
 from .domains import Domain
+
+
+ProgressCallback = Callable[[int, int, int], None]
+
+
+@dataclass(frozen=True)
+class SimulationOptions:
+    """Tunable options for Brownian path simulation."""
+
+    antithetic: bool = False
+    stratified: bool = False
+    batch_size: Optional[int] = None
+    progress_callback: Optional[ProgressCallback] = None
+    seed: Optional[int] = None
+
+
+def _validate_inputs(x0: torch.Tensor, dt: float, max_steps: int, domain: Domain) -> None:
+    if x0.dim() != 2:
+        raise ValueError(f"x0 must be 2D (batch_size, dim), got shape {x0.shape}")
+    if dt <= 0:
+        raise ValueError(f"dt must be positive, got {dt}")
+    if max_steps <= 0:
+        raise ValueError(f"max_steps must be positive, got {max_steps}")
+    if x0.shape[1] != domain.dim:
+        raise ValueError(f"x0 dimension ({x0.shape[1]}) doesn't match domain ({domain.dim})")
+    if x0.shape[0] <= 0:
+        raise ValueError("x0 must contain at least one path")
 
 
 def get_device() -> str:
