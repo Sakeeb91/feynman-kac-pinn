@@ -30,4 +30,9 @@ def get_activation(name: str) -> nn.Module:
     return table[key]()
 
 
-__all__ = ["swish", "get_activation"]
+def available_activations() -> tuple[str, ...]:
+    """Return supported activation names for config validation/UI."""
+    return ("gelu", "identity", "relu", "silu", "swish", "tanh")
+
+
+__all__ = ["swish", "get_activation", "available_activations"]
