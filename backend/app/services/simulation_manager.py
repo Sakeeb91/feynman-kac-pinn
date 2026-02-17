@@ -117,6 +117,51 @@ class SimulationManager:
                     "grad_norm": list(history.get("grad_norm", [])),
                 }
 
+    def _run_training_sync(self, simulation_id: str, payload: dict) -> tuple[str, dict | None]:
+        from ml.models import FeynmanKacPINN
+        from ml.problems import create_problem
+        from ml.training import FKProblem, FeynmanKacTrainer
+
+        config = payload["training_config"]
+        problem = create_problem(payload["problem_id"], **payload["parameters"])
+        model = FeynmanKacPINN(input_dim=problem.dimension)
+        trainer = FeynmanKacTrainer(
+            model=model,
+            problem=FKProblem.from_problem(problem),
+            lr=float(config["learning_rate"]),
+            max_grad_norm=5.0,
+        )
+
+        total_steps = int(config["n_steps"])
+
+        def _step_callback(step: int, metrics) -> None:
+            if self.is_cancelled(simulation_id):
+                raise RuntimeError("__cancelled__")
+            self.update_progress(
+                simulation_id,
+                progress=step / total_steps,
+                metrics={
+                    "loss": metrics.loss,
+                    "lr": metrics.lr,
+                    "grad_norm": metrics.grad_norm,
+                },
+            )
+
+        try:
+            history = trainer.fit(
+                steps=total_steps,
+                batch_size=int(config["batch_size"]),
+                n_mc_paths=int(config["n_mc_paths"]),
+                step_callback=_step_callback,
+            )
+        except RuntimeError as exc:
+            if str(exc) == "__cancelled__":
+                return "cancelled", None
+            raise
+
+        self.set_history(simulation_id, history.__dict__)
+        return "completed", trainer.latest_metrics()
+
     async def run_simulation(self, simulation_id: str) -> None:
         """
         Execute a lightweight async simulation loop.
@@ -127,20 +172,27 @@ class SimulationManager:
         payload = self.get_raw(simulation_id)
         if payload is None:
             return
-        total_steps = int(payload["training_config"]["n_steps"])
+
         self.update_progress(simulation_id, status=SimulationStatus.RUNNING, progress=0.0)
-        for step in range(total_steps):
-            if self.is_cancelled(simulation_id):
+        try:
+            outcome, latest_metrics = await asyncio.to_thread(
+                self._run_training_sync, simulation_id, payload
+            )
+            if outcome == "cancelled":
                 self.update_progress(simulation_id, status=SimulationStatus.CANCELLED)
-                return
-            await asyncio.sleep(0)
-            progress = (step + 1) / total_steps
+            else:
+                self.update_progress(
+                    simulation_id,
+                    status=SimulationStatus.COMPLETED,
+                    progress=1.0,
+                    metrics=latest_metrics,
+                )
+        except Exception as exc:  # pragma: no cover - defensive fallback path
             self.update_progress(
                 simulation_id,
-                progress=progress,
-                metrics={"loss": float(total_steps - step) / total_steps},
+                status=SimulationStatus.FAILED,
+                metrics={"error": str(exc)},
             )
-        self.update_progress(simulation_id, status=SimulationStatus.COMPLETED, progress=1.0)
 
 
 simulation_manager = SimulationManager()
