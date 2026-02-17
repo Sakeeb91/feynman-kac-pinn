@@ -184,6 +184,35 @@ class FeynmanKacTrainer:
             return False
         return self.early_stopping.bad_epochs >= self.early_stopping.patience
 
+    def fit(
+        self,
+        steps: int,
+        batch_size: int,
+        n_mc_paths: int,
+        val_interval: int = 0,
+        val_batch_size: Optional[int] = None,
+        val_mc_paths: Optional[int] = None,
+        step_callback: Optional[Callable[[int, TrainStepMetrics], None]] = None,
+    ) -> TrainerHistory:
+        """Run repeated train steps with optional periodic validation."""
+        if steps <= 0:
+            raise ValueError("steps must be positive")
+        if batch_size <= 0 or n_mc_paths <= 0:
+            raise ValueError("batch_size and n_mc_paths must be positive")
+
+        effective_val_batch = batch_size if val_batch_size is None else val_batch_size
+        effective_val_mc = n_mc_paths if val_mc_paths is None else val_mc_paths
+
+        for step in range(1, steps + 1):
+            metrics = self.train_step(batch_size=batch_size, n_mc_paths=n_mc_paths)
+            if step_callback is not None:
+                step_callback(step, metrics)
+            if val_interval > 0 and step % val_interval == 0:
+                self.validate(batch_size=effective_val_batch, n_mc_paths=effective_val_mc)
+                if self.should_stop_early():
+                    break
+        return self.history
+
 
 __all__ = [
     "FKProblem",
