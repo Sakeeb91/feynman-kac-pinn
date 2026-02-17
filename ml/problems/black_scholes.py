@@ -136,5 +136,24 @@ class BlackScholesND(Problem):
             return s * self._normal_cdf(d1) - k * discount * self._normal_cdf(d2)
         return k * discount * self._normal_cdf(-d2) - s * self._normal_cdf(-d1)
 
+    def sample_terminal_log_prices(
+        self,
+        n_samples: int,
+        device: str | torch.device = "cpu",
+        dtype: torch.dtype = torch.float32,
+    ) -> torch.Tensor:
+        """Sample terminal log-price displacements with correlated GBM increments."""
+        if n_samples <= 0:
+            raise ValueError("n_samples must be positive")
+        z = torch.randn(n_samples, self.dimension, device=device, dtype=dtype)
+        chol = self.cholesky_correlation(device=device, dtype=dtype)
+        correlated = z @ chol.T
+        sigma = torch.as_tensor(self._params.volatility, device=device, dtype=dtype)
+        r = torch.as_tensor(self._params.risk_free_rate, device=device, dtype=dtype)
+        t = torch.as_tensor(self._params.maturity, device=device, dtype=dtype)
+        drift = (r - 0.5 * sigma**2) * t
+        diffusion = sigma * torch.sqrt(t) * correlated
+        return drift + diffusion
+
     def get_parameters(self) -> dict[str, float | int | str]:
         return self._params.__dict__.copy()
