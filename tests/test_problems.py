@@ -51,3 +51,17 @@ def test_black_scholes_1d_matches_known_reference_prices() -> None:
     put_price = put.analytical_solution(x).item()
     assert call_price == pytest.approx(10.4506, rel=0.01)
     assert put_price == pytest.approx(5.5735, rel=0.01)
+
+
+def test_black_scholes_boundary_and_correlation_shape() -> None:
+    problem = BlackScholesND(dim=5, option_type="call", correlation=0.25)
+    x = torch.zeros(7, 5)
+    payoff = problem.boundary_condition(x)
+    potential = problem.potential(x)
+    corr = problem.correlation_matrix()
+    chol = problem.cholesky_correlation()
+    assert payoff.shape == (7,)
+    assert potential.shape == (7,)
+    assert corr.shape == (5, 5)
+    assert chol.shape == (5, 5)
+    assert torch.allclose(torch.diag(corr), torch.ones(5))
