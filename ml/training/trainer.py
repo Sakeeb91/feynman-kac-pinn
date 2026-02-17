@@ -245,6 +245,23 @@ class FeynmanKacTrainer:
             self.history = TrainerHistory(**history)
         return payload
 
+    def latest_metrics(self) -> dict[str, float]:
+        """Return latest logged metrics for progress reporting."""
+        if not self.history.train_loss:
+            return {}
+        metrics: dict[str, float] = {
+            "train_loss": self.history.train_loss[-1],
+            "lr": self.history.lr[-1],
+            "grad_norm": self.history.grad_norm[-1],
+        }
+        if self.history.val_loss:
+            metrics["val_loss"] = self.history.val_loss[-1]
+        return metrics
+
+    def reset_history(self) -> None:
+        """Clear history buffers while preserving model/optimizer state."""
+        self.history = TrainerHistory()
+
 
 __all__ = [
     "FKProblem",
