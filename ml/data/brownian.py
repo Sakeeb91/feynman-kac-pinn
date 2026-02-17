@@ -137,6 +137,9 @@ def simulate_brownian_paths(
                      If None, path_integrals will be zeros.
         device: Compute device ('mps', 'cuda', 'cpu'). Auto-detected if None.
         seed: Random seed for reproducibility. If None, uses current RNG state.
+        antithetic: If True, use antithetic increments for variance reduction.
+        stratified: If True, use stratified Gaussian draws per step.
+        progress_callback: Optional callback `(step, max_steps, active_paths)`.
 
     Returns:
         exit_points: Points where paths exited, shape (batch_size, dim)
@@ -371,6 +374,10 @@ def feynman_kac_estimate(
         dt: Time step for Brownian motion
         max_steps: Maximum steps before timeout
         device: Compute device
+        antithetic: Use antithetic variates in path generation.
+        stratified: Use stratified Gaussian increments.
+        batch_size: Optional path mini-batch size for memory control.
+        progress_callback: Optional callback `(step, max_steps, active_paths)`.
 
     Returns:
         estimates: MC estimates of u(x), shape (n_points,)
