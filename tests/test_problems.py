@@ -65,3 +65,20 @@ def test_black_scholes_boundary_and_correlation_shape() -> None:
     assert corr.shape == (5, 5)
     assert chol.shape == (5, 5)
     assert torch.allclose(torch.diag(corr), torch.ones(5))
+
+
+def test_harmonic_oscillator_ground_state_is_gaussian() -> None:
+    problem = HarmonicOscillatorND(dim=3, mass=1.0, omega=1.0, hbar=1.0)
+    x = torch.randn(128, 3)
+    psi = problem.analytical_solution(x)
+    boundary = problem.boundary_condition(x)
+    relative_l2 = torch.norm(psi - boundary) / torch.norm(psi).clamp_min(1e-12)
+    assert relative_l2.item() < 0.05
+
+
+def test_harmonic_oscillator_energy_and_potential_are_positive() -> None:
+    problem = HarmonicOscillatorND(dim=4, mass=2.0, omega=0.5, hbar=1.0)
+    x = torch.randn(16, 4)
+    potential = problem.potential(x)
+    assert problem.ground_state_energy > 0.0
+    assert torch.all(potential >= 0)
