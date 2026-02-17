@@ -79,6 +79,27 @@ class BlackScholesND(Problem):
             return torch.clamp(basket_price - strike, min=0.0)
         return torch.clamp(strike - basket_price, min=0.0)
 
+    def correlation_matrix(
+        self,
+        device: str | torch.device = "cpu",
+        dtype: torch.dtype = torch.float32,
+    ) -> torch.Tensor:
+        """Return constant-correlation matrix used by the GBM basket model."""
+        rho = float(self._params.correlation)
+        mat = torch.full((self.dimension, self.dimension), rho, device=device, dtype=dtype)
+        idx = torch.arange(self.dimension, device=device)
+        mat[idx, idx] = 1.0
+        return mat
+
+    def cholesky_correlation(
+        self,
+        device: str | torch.device = "cpu",
+        dtype: torch.dtype = torch.float32,
+    ) -> torch.Tensor:
+        """Return Cholesky factor for correlated normal sampling."""
+        corr = self.correlation_matrix(device=device, dtype=dtype)
+        return torch.linalg.cholesky(corr)
+
     def boundary_condition(self, x: torch.Tensor) -> torch.Tensor:
         prices = self._price_from_log(x)
         basket_price = prices.mean(dim=-1)
