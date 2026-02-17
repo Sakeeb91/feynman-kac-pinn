@@ -25,3 +25,16 @@ class FluxBoundaryCondition(BoundaryCondition, ABC):
     @abstractmethod
     def __call__(self, x: torch.Tensor, normals: torch.Tensor | None = None) -> torch.Tensor:
         """Evaluate boundary flux at boundary points."""
+
+
+class DirichletBC(BoundaryCondition):
+    """Fixed value boundary condition u|∂Ω = g(x)."""
+
+    def __init__(self, value_fn: TensorFn):
+        self._value_fn = value_fn
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        values = self._value_fn(x)
+        if values.dim() > 1 and values.shape[-1] == 1:
+            values = values.squeeze(-1)
+        return values
