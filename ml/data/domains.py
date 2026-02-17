@@ -418,3 +418,26 @@ class Interval(Hypercube):
 
     def __repr__(self) -> str:
         return f"Interval(low={self._low}, high={self._high})"
+
+
+def visualize_domain_samples(
+    domain: Domain,
+    n_interior: int = 512,
+    n_boundary: int = 256,
+    device: str = "cpu",
+) -> dict[str, torch.Tensor]:
+    """
+    Return point clouds for plotting domain geometry.
+
+    The helper is intentionally backend-agnostic and only returns tensors;
+    callers can feed these points into Matplotlib/Plotly as needed.
+    """
+    interior = domain.sample_interior(n_interior, device=device)
+    boundary = domain.sample_boundary(n_boundary, device=device)
+    low, high = domain.bounding_box(device=device)
+    return {
+        "interior": interior,
+        "boundary": boundary,
+        "bbox_low": low,
+        "bbox_high": high,
+    }
