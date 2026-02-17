@@ -488,8 +488,8 @@ if __name__ == "__main__":
         x0_sphere, dt=0.001, max_steps=10000, domain=sphere, seed=42
     )
 
-    # Theoretical: E[τ] = R²/(2d) = 1/(2*3) = 1/6 ≈ 0.167 for radius=1, dim=3
-    expected_mean = 1.0 / 6
+    # Theoretical for standard Brownian motion: E[τ] = R²/d = 1/3 for R=1, d=3.
+    expected_mean = 1.0 / 3
     actual_mean = exit_times_sphere.mean().item()
     print(f"  Mean exit time: {actual_mean:.4f}")
     print(f"  Expected (theory): {expected_mean:.4f}")

@@ -43,7 +43,8 @@ def test_exit_time_from_unit_sphere_matches_reference_value() -> None:
         device="cpu",
         seed=7,
     )
-    expected = 1.0 / 6.0
+    # For standard Brownian motion (generator (1/2)Delta), E[tau] = R^2 / d.
+    expected = 1.0 / 3.0
     relative_error = abs(exit_times.mean().item() - expected) / expected
     assert relative_error < 0.10
 
