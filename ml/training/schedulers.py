@@ -60,9 +60,33 @@ def build_linear_warmup_scheduler(
     return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=schedule)
 
 
+def build_scheduler(
+    optimizer: torch.optim.Optimizer,
+    scheduler_name: SchedulerName,
+    total_steps: int,
+    min_lr: float = 1e-6,
+    plateau_factor: float = 0.5,
+    plateau_patience: int = 10,
+) -> torch.optim.lr_scheduler.LRScheduler | torch.optim.lr_scheduler.ReduceLROnPlateau | None:
+    """Build scheduler from name and common parameters."""
+    if scheduler_name == "none":
+        return None
+    if scheduler_name == "cosine":
+        return build_cosine_scheduler(optimizer=optimizer, total_steps=total_steps, min_lr=min_lr)
+    if scheduler_name == "plateau":
+        return build_plateau_scheduler(
+            optimizer=optimizer,
+            factor=plateau_factor,
+            patience=plateau_patience,
+            min_lr=min_lr,
+        )
+    raise ValueError(f"unsupported scheduler name '{scheduler_name}'")
+
+
 __all__ = [
     "SchedulerName",
     "WarmupConfig",
+    "build_scheduler",
     "build_linear_warmup_scheduler",
     "build_cosine_scheduler",
     "build_plateau_scheduler",
