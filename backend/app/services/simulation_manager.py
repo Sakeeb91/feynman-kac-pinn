@@ -59,5 +59,38 @@ class SimulationManager:
                 payload["updated_at"] = utc_now()
             return True
 
+    def exists(self, simulation_id: str) -> bool:
+        with self._lock:
+            return simulation_id in self._simulations
+
+    def is_cancelled(self, simulation_id: str) -> bool:
+        with self._lock:
+            return self._cancel_flags.get(simulation_id, False)
+
+    def update_progress(
+        self,
+        simulation_id: str,
+        *,
+        progress: float | None = None,
+        status: SimulationStatus | None = None,
+        metrics: dict | None = None,
+    ) -> None:
+        with self._lock:
+            if simulation_id not in self._simulations:
+                return
+            payload = self._simulations[simulation_id]
+            if progress is not None:
+                payload["progress"] = max(0.0, min(1.0, float(progress)))
+            if status is not None:
+                payload["status"] = status
+            if metrics is not None:
+                payload["metrics"] = metrics
+            payload["updated_at"] = utc_now()
+
+    def get_raw(self, simulation_id: str) -> dict | None:
+        with self._lock:
+            payload = self._simulations.get(simulation_id)
+            return None if payload is None else dict(payload)
+
 
 simulation_manager = SimulationManager()
