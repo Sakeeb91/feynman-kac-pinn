@@ -2,7 +2,15 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from ml.problems import BlackScholesND, HarmonicOscillatorND
+from ml.problems import (
+    BlackScholesND,
+    HarmonicOscillatorND,
+    available_problems,
+    create_problem,
+    default_problem_configs,
+    deserialize_problem,
+    serialize_problem,
+)
 
 
 def test_black_scholes_problem_instantiates() -> None:
@@ -82,3 +90,24 @@ def test_harmonic_oscillator_energy_and_potential_are_positive() -> None:
     potential = problem.potential(x)
     assert problem.ground_state_energy > 0.0
     assert torch.all(potential >= 0)
+
+
+def test_problem_registry_lists_expected_keys() -> None:
+    keys = available_problems()
+    assert "black_scholes" in keys
+    assert "harmonic_oscillator" in keys
+
+
+def test_problem_serialization_round_trip() -> None:
+    original = BlackScholesND(dim=3, strike=105.0, option_type="put")
+    payload = serialize_problem(original)
+    restored = deserialize_problem(payload)
+    assert isinstance(restored, BlackScholesND)
+    assert restored.get_parameters() == original.get_parameters()
+
+
+def test_default_configs_create_problems() -> None:
+    configs = default_problem_configs()
+    for key, params in configs.items():
+        problem = create_problem(key, **params)
+        assert problem.dimension > 0
