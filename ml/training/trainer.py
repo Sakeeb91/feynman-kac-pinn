@@ -31,6 +31,17 @@ class PotentialFn(Protocol):
         ...
 
 
+class TargetEstimator(Protocol):
+    def __call__(
+        self,
+        x: torch.Tensor,
+        problem: FKProblem,
+        n_mc_paths: int,
+        device: str,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        ...
+
+
 @dataclass
 class FKProblem:
     domain: Domain
@@ -75,6 +86,7 @@ class FeynmanKacTrainer:
         max_grad_norm: Optional[float] = None,
         early_stopping_patience: Optional[int] = None,
         early_stopping_min_delta: float = 0.0,
+        target_estimator: Optional[TargetEstimator] = None,
     ):
         self.model = model
         self.problem = problem
@@ -98,6 +110,7 @@ class FeynmanKacTrainer:
             else None
         )
         self.max_grad_norm = max_grad_norm
+        self.target_estimator = target_estimator
         self.history = TrainerHistory()
         self.global_step = 0
         self.early_stopping = (
@@ -111,14 +124,17 @@ class FeynmanKacTrainer:
 
     def _sample_training_batch(self, batch_size: int, n_mc_paths: int) -> tuple[torch.Tensor, torch.Tensor]:
         x = self.problem.domain.sample_interior(batch_size, device=self.device)
-        targets, _ = feynman_kac_estimate(
-            x=x,
-            boundary_fn=self.problem.boundary_condition,
-            domain=self.problem.domain,
-            potential_fn=self.problem.potential,
-            n_paths=n_mc_paths,
-            device=self.device,
-        )
+        if self.target_estimator is not None:
+            targets, _ = self.target_estimator(x=x, problem=self.problem, n_mc_paths=n_mc_paths, device=self.device)
+        else:
+            targets, _ = feynman_kac_estimate(
+                x=x,
+                boundary_fn=self.problem.boundary_condition,
+                domain=self.problem.domain,
+                potential_fn=self.problem.potential,
+                n_paths=n_mc_paths,
+                device=self.device,
+            )
         return x, targets
 
     def _compute_grad_norm(self) -> float:
