@@ -344,6 +344,72 @@ class Union:
         return f"Union(n_domains={len(self._domains)}, dim={self._dim})"
 
 
+class Intersection:
+    """Composite domain representing intersection of subdomains."""
+
+    def __init__(self, *domains: Domain):
+        if len(domains) < 2:
+            raise ValueError("Intersection requires at least two subdomains")
+        dim = domains[0].dim
+        if any(d.dim != dim for d in domains):
+            raise ValueError("all subdomains must have the same dimension")
+        self._domains = tuple(domains)
+        self._dim = dim
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def contains(self, x: torch.Tensor) -> torch.Tensor:
+        x = _as_points(x, self._dim)
+        out = torch.ones(x.shape[0], dtype=torch.bool, device=x.device)
+        for domain in self._domains:
+            out &= domain.contains(x)
+        return out
+
+    def project_to_boundary(self, x: torch.Tensor) -> torch.Tensor:
+        x = _as_points(x, self._dim)
+        projected = x.clone()
+        for domain in self._domains:
+            projected = domain.project_to_boundary(projected)
+        return projected
+
+    def sample_interior(self, n: int, device: str = "cpu") -> torch.Tensor:
+        _check_sample_count(n)
+        low, high = self.bounding_box(device=device)
+        return _sample_from_bounding_box(low, high, n, self.contains, device=device)
+
+    def sample_boundary(self, n: int, device: str = "cpu") -> torch.Tensor:
+        _check_sample_count(n)
+        points: list[torch.Tensor] = []
+        remaining = n
+        for domain in self._domains:
+            if remaining <= 0:
+                break
+            candidate = domain.sample_boundary(max(remaining * 3, 64), device=device)
+            on_boundary = self.contains(candidate)
+            accepted = candidate[on_boundary]
+            if accepted.numel() == 0:
+                continue
+            taken = accepted[:remaining]
+            points.append(taken)
+            remaining -= taken.shape[0]
+        if remaining > 0:
+            # Fallback: sample near intersection and snap to boundary.
+            extra = self.sample_interior(remaining, device=device)
+            points.append(self.project_to_boundary(extra))
+        return torch.cat(points, dim=0)
+
+    def bounding_box(self, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+        bounds = [domain.bounding_box(device=device) for domain in self._domains]
+        lows = torch.stack([b[0] for b in bounds], dim=0)
+        highs = torch.stack([b[1] for b in bounds], dim=0)
+        return lows.max(dim=0).values, highs.min(dim=0).values
+
+    def __repr__(self) -> str:
+        return f"Intersection(n_domains={len(self._domains)}, dim={self._dim})"
+
+
 class Interval(Hypercube):
     """1D interval domain [low, high]."""
 
