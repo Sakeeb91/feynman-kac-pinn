@@ -17,6 +17,7 @@ where:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Callable, Optional, Tuple
 
 import torch
@@ -291,6 +292,52 @@ def simulate_brownian_paths_batched(
         torch.cat(all_exit_times, dim=0),
         torch.cat(all_integrals, dim=0),
     )
+
+
+def _synchronize_device(device: str) -> None:
+    if device == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize()
+    if device == "mps" and hasattr(torch, "mps"):
+        torch.mps.synchronize()
+
+
+def profile_simulation_devices(
+    x0: torch.Tensor,
+    dt: float,
+    max_steps: int,
+    domain: Domain,
+    potential_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+    include_cpu: bool = True,
+) -> dict[str, float]:
+    """
+    Benchmark simulation runtime across available devices.
+
+    Returns a mapping of device name to elapsed wall-clock seconds.
+    """
+    devices: list[str] = []
+    if include_cpu:
+        devices.append("cpu")
+    if torch.backends.mps.is_available():
+        devices.append("mps")
+    if torch.cuda.is_available():
+        devices.append("cuda")
+
+    timings: dict[str, float] = {}
+    for device in devices:
+        start = perf_counter()
+        simulate_brownian_paths_batched(
+            x0=x0.to(device),
+            dt=dt,
+            max_steps=max_steps,
+            domain=domain,
+            potential_fn=potential_fn,
+            device=device,
+            batch_size=min(2048, x0.shape[0]),
+            seed=0,
+        )
+        _synchronize_device(device)
+        timings[device] = perf_counter() - start
+    return timings
 
 
 def feynman_kac_estimate(
