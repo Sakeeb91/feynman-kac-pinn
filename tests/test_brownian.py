@@ -58,3 +58,36 @@ def test_heat_equation_value_at_midpoint() -> None:
     )
     rel_error = abs(estimates.item() - 0.5) / 0.5
     assert rel_error < 0.05
+
+
+def test_monte_carlo_variance_decays_like_inverse_sqrt_n() -> None:
+    domain = Interval(0.0, 1.0)
+    x = torch.tensor([[0.5]])
+    boundary_fn = lambda y: y.squeeze(-1)
+
+    sample_sizes = torch.tensor([500.0, 1000.0, 2000.0, 4000.0])
+    std_errors = []
+    for n in sample_sizes.tolist():
+        _, std = feynman_kac_estimate(
+            x=x,
+            boundary_fn=boundary_fn,
+            domain=domain,
+            n_paths=int(n),
+            dt=0.001,
+            max_steps=15000,
+            device="cpu",
+            antithetic=True,
+        )
+        std_errors.append(std.item())
+
+    x_log = torch.log(sample_sizes)
+    y_log = torch.log(torch.tensor(std_errors))
+    slope = ((x_log - x_log.mean()) * (y_log - y_log.mean())).sum() / ((x_log - x_log.mean()) ** 2).sum()
+    intercept = y_log.mean() - slope * x_log.mean()
+    fit = slope * x_log + intercept
+    residual_ss = ((y_log - fit) ** 2).sum()
+    total_ss = ((y_log - y_log.mean()) ** 2).sum().clamp_min(1e-12)
+    r_squared = 1.0 - residual_ss / total_ss
+
+    assert -0.65 < slope.item() < -0.35
+    assert r_squared.item() > 0.95
