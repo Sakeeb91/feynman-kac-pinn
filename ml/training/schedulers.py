@@ -42,9 +42,28 @@ def build_plateau_scheduler(
     )
 
 
+def build_linear_warmup_scheduler(
+    optimizer: torch.optim.Optimizer,
+    warmup_steps: int,
+    start_factor: float = 0.1,
+) -> torch.optim.lr_scheduler.LambdaLR:
+    """Linearly ramp LR from start_factor to 1.0 over warmup steps."""
+    steps = max(1, warmup_steps)
+    start = float(start_factor)
+
+    def schedule(step: int) -> float:
+        if step >= steps:
+            return 1.0
+        alpha = step / steps
+        return start + (1.0 - start) * alpha
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=schedule)
+
+
 __all__ = [
     "SchedulerName",
     "WarmupConfig",
+    "build_linear_warmup_scheduler",
     "build_cosine_scheduler",
     "build_plateau_scheduler",
 ]
