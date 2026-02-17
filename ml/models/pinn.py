@@ -75,5 +75,21 @@ class FeynmanKacPINN(nn.Module):
             y = self.output_activation(y)
         return y
 
+    def num_parameters(self, trainable_only: bool = True) -> int:
+        """Return model parameter count."""
+        if trainable_only:
+            return sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return sum(p.numel() for p in self.parameters())
+
+    def architecture_dict(self) -> dict[str, object]:
+        """Serializable model config used by checkpoint metadata."""
+        return {
+            "input_dim": self.input_dim,
+            "hidden_dims": list(self.hidden_dims),
+            "activation": self.activation_name,
+            "output_activation": self.output_activation_name,
+            "use_residual": self.use_residual,
+        }
+
 
 __all__ = ["FeynmanKacPINN"]
