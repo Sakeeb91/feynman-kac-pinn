@@ -234,6 +234,65 @@ def simulate_brownian_paths(
     return exit_points, exit_times, path_integrals
 
 
+def simulate_brownian_paths_batched(
+    x0: torch.Tensor,
+    dt: float,
+    max_steps: int,
+    domain: Domain,
+    potential_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+    device: Optional[str] = None,
+    seed: Optional[int] = None,
+    batch_size: Optional[int] = None,
+    antithetic: bool = False,
+    stratified: bool = False,
+    progress_callback: Optional[ProgressCallback] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Simulate Brownian paths in mini-batches to reduce peak memory usage.
+    """
+    if batch_size is None or batch_size >= x0.shape[0]:
+        return simulate_brownian_paths(
+            x0=x0,
+            dt=dt,
+            max_steps=max_steps,
+            domain=domain,
+            potential_fn=potential_fn,
+            device=device,
+            seed=seed,
+            antithetic=antithetic,
+            stratified=stratified,
+            progress_callback=progress_callback,
+        )
+
+    n = x0.shape[0]
+    all_exit_points: list[torch.Tensor] = []
+    all_exit_times: list[torch.Tensor] = []
+    all_integrals: list[torch.Tensor] = []
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+        batch_seed = None if seed is None else seed + start
+        result = simulate_brownian_paths(
+            x0=x0[start:end],
+            dt=dt,
+            max_steps=max_steps,
+            domain=domain,
+            potential_fn=potential_fn,
+            device=device,
+            seed=batch_seed,
+            antithetic=antithetic,
+            stratified=stratified,
+            progress_callback=progress_callback,
+        )
+        all_exit_points.append(result[0])
+        all_exit_times.append(result[1])
+        all_integrals.append(result[2])
+    return (
+        torch.cat(all_exit_points, dim=0),
+        torch.cat(all_exit_times, dim=0),
+        torch.cat(all_integrals, dim=0),
+    )
+
+
 def feynman_kac_estimate(
     x: torch.Tensor,
     boundary_fn: Callable[[torch.Tensor], torch.Tensor],
