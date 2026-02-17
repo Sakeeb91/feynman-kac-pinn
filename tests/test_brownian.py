@@ -1,5 +1,3 @@
-import math
-
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -11,7 +9,15 @@ from ml.data.brownian import (
     profile_simulation_devices,
     simulate_brownian_paths,
 )
-from ml.data.domains import Hypersphere, Interval, visualize_domain_samples
+from ml.data.domains import (
+    HyperEllipsoid,
+    Hypercube,
+    Hypersphere,
+    Intersection,
+    Interval,
+    Union,
+    visualize_domain_samples,
+)
 from ml.utils.mc_estimator import FeynmanKacSolver
 
 
@@ -91,3 +97,62 @@ def test_monte_carlo_variance_decays_like_inverse_sqrt_n() -> None:
 
     assert -0.65 < slope.item() < -0.35
     assert r_squared.item() > 0.95
+
+
+def test_domain_extensions_and_visualization_helpers() -> None:
+    cube = Hypercube(low=-1.0, high=1.0, dim=2)
+    ellipsoid = HyperEllipsoid(center=0.0, radii=torch.tensor([0.75, 0.5]), dim=2)
+    union = Union(cube, ellipsoid)
+    inter = Intersection(cube, ellipsoid)
+
+    query = torch.tensor([[0.1, 0.1], [0.9, 0.0], [0.9, 0.9]])
+    assert union.contains(query).tolist() == [True, True, True]
+    assert inter.contains(query).tolist() == [True, False, False]
+
+    vis = visualize_domain_samples(union, n_interior=64, n_boundary=32, device="cpu")
+    assert vis["interior"].shape == (64, 2)
+    assert vis["boundary"].shape == (32, 2)
+
+
+def test_solver_confidence_intervals_and_adaptive_mode() -> None:
+    domain = Interval(0.0, 1.0)
+    bc = DirichletBC(lambda x: x.squeeze(-1))
+    solver = FeynmanKacSolver(
+        domain=domain,
+        boundary_condition=bc,
+        dt=0.001,
+        max_steps=15000,
+        device="cpu",
+        antithetic=True,
+        batch_size=1024,
+    )
+
+    x = torch.tensor([[0.25], [0.75]])
+    output = solver.solve(x=x, n_samples=1500, return_std=True)
+    assert output.estimates.shape == (2,)
+    assert output.std_errors.shape == (2,)
+
+    ci = solver.confidence_interval(output, confidence_level=0.95)
+    assert (ci.lower <= output.estimates).all()
+    assert (ci.upper >= output.estimates).all()
+
+    adaptive_output, used_samples = solver.solve_adaptive(
+        x=x,
+        initial_samples=256,
+        max_samples=2048,
+        target_rel_error=0.35,
+    )
+    assert used_samples >= 256
+    assert adaptive_output.estimates.shape == (2,)
+
+
+def test_device_profile_reports_cpu_timing() -> None:
+    x0 = torch.full((32, 1), 0.5)
+    timings = profile_simulation_devices(
+        x0=x0,
+        dt=0.01,
+        max_steps=32,
+        domain=Interval(0.0, 1.0),
+    )
+    assert "cpu" in timings
+    assert timings["cpu"] > 0.0
