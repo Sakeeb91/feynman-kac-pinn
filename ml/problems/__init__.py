@@ -32,6 +32,27 @@ def create_problem(problem_name: str, **params: object) -> Problem:
     return _REGISTRY[key](**params)
 
 
+def serialize_problem(problem: Problem) -> dict[str, object]:
+    """Serialize an instantiated problem into a JSON-safe payload."""
+    payload = problem.to_dict()
+    for key, cls in _REGISTRY.items():
+        if isinstance(problem, cls):
+            payload["problem_name"] = key
+            break
+    return payload
+
+
+def deserialize_problem(payload: dict[str, object]) -> Problem:
+    """Recreate a problem from `serialize_problem` output."""
+    if "problem_name" not in payload:
+        raise ValueError("payload missing 'problem_name'")
+    key = str(payload["problem_name"])
+    params = payload.get("parameters", {})
+    if not isinstance(params, dict):
+        raise ValueError("'parameters' must be a dictionary")
+    return create_problem(key, **params)
+
+
 __all__ = [
     "Problem",
     "BlackScholesND",
@@ -41,4 +62,6 @@ __all__ = [
     "available_problems",
     "default_problem_configs",
     "create_problem",
+    "serialize_problem",
+    "deserialize_problem",
 ]
