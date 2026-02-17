@@ -117,6 +117,12 @@ class SimulationManager:
                     "grad_norm": list(history.get("grad_norm", [])),
                 }
 
+    def clear(self) -> None:
+        with self._lock:
+            self._simulations.clear()
+            self._cancel_flags.clear()
+            self._histories.clear()
+
     def _run_training_sync(self, simulation_id: str, payload: dict) -> tuple[str, dict | None]:
         from ml.models import FeynmanKacPINN
         from ml.problems import create_problem
