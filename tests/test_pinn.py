@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 
 torch = pytest.importorskip("torch")
 
@@ -6,6 +7,7 @@ from ml.models.pinn import FeynmanKacPINN
 from ml.models.activations import available_activations, get_activation, swish
 from ml.models.initialization import init_linear_layer
 from ml.training.trainer import FKProblem, FeynmanKacTrainer
+from ml.training.schedulers import WarmupConfig
 
 
 def test_forward_output_shape() -> None:
@@ -100,3 +102,44 @@ def test_training_loss_decreases_over_short_run() -> None:
     )
     history = trainer.fit(steps=60, batch_size=8, n_mc_paths=8)
     assert history.train_loss[-1] < history.train_loss[0]
+
+
+def test_checkpoint_roundtrip_restores_state(tmp_path: Path) -> None:
+    domain = _FixedPointDomain(0.33)
+    model = FeynmanKacPINN(input_dim=1, hidden_dims=(8, 8), activation="tanh")
+    trainer = FeynmanKacTrainer(
+        model=model,
+        problem=FKProblem(domain=domain, boundary_condition=lambda x: x.squeeze(-1)),
+        device="cpu",
+        lr=1e-2,
+        target_estimator=_constant_target_estimator,
+    )
+    trainer.fit(steps=10, batch_size=4, n_mc_paths=4)
+    checkpoint = trainer.save_checkpoint(tmp_path / "phase2.pt")
+
+    reloaded = FeynmanKacTrainer(
+        model=FeynmanKacPINN(input_dim=1, hidden_dims=(8, 8), activation="tanh"),
+        problem=FKProblem(domain=domain, boundary_condition=lambda x: x.squeeze(-1)),
+        device="cpu",
+        lr=1e-2,
+        target_estimator=_constant_target_estimator,
+    )
+    payload = reloaded.load_checkpoint(checkpoint)
+    assert reloaded.global_step == trainer.global_step
+    assert len(reloaded.history.train_loss) == len(trainer.history.train_loss)
+    assert "model_config" in payload
+
+
+def test_warmup_scheduler_increases_lr_during_initial_steps() -> None:
+    domain = _FixedPointDomain(0.1)
+    model = FeynmanKacPINN(input_dim=1, hidden_dims=(8, 8), activation="relu")
+    trainer = FeynmanKacTrainer(
+        model=model,
+        problem=FKProblem(domain=domain, boundary_condition=lambda x: x.squeeze(-1)),
+        device="cpu",
+        lr=1e-2,
+        warmup=WarmupConfig(steps=5, start_factor=0.2),
+        target_estimator=_constant_target_estimator,
+    )
+    trainer.fit(steps=6, batch_size=4, n_mc_paths=4)
+    assert trainer.history.lr[0] <= trainer.history.lr[4]
