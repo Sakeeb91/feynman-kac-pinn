@@ -80,10 +80,18 @@ class BlackScholesND(Problem):
         return torch.clamp(strike - basket_price, min=0.0)
 
     def boundary_condition(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
+        prices = self._price_from_log(x)
+        basket_price = prices.mean(dim=-1)
+        return self._basket_payoff(basket_price)
 
     def potential(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
+        x = self.validate_points(x)
+        return torch.full(
+            (x.shape[0],),
+            float(self._params.risk_free_rate),
+            device=x.device,
+            dtype=x.dtype,
+        )
 
     def get_parameters(self) -> dict[str, float | int | str]:
         return self._params.__dict__.copy()
