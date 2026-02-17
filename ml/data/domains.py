@@ -4,11 +4,30 @@ Domain definitions for PDE problems.
 Domains define the geometry over which PDEs are solved, including:
 - Interior point checking
 - Boundary projection for exit detection
+- Uniform interior / boundary sampling
 """
 
-import torch
-from abc import ABC, abstractmethod
+from __future__ import annotations
+
 from typing import Protocol, runtime_checkable
+
+import torch
+
+
+def _as_points(x: torch.Tensor, expected_dim: int) -> torch.Tensor:
+    """Return `x` as shape (batch, dim) and validate dimensionality."""
+    if x.dim() == 1:
+        x = x.unsqueeze(0)
+    if x.dim() != 2:
+        raise ValueError(f"x must have shape (batch, dim), got {tuple(x.shape)}")
+    if x.shape[1] != expected_dim:
+        raise ValueError(f"expected dim={expected_dim}, got dim={x.shape[1]}")
+    return x
+
+
+def _check_sample_count(n: int) -> None:
+    if n <= 0:
+        raise ValueError(f"n must be positive, got {n}")
 
 
 @runtime_checkable
@@ -17,87 +36,37 @@ class Domain(Protocol):
 
     @property
     def dim(self) -> int:
-        """Spatial dimension of the domain."""
         ...
 
     def contains(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Check if points are inside the domain.
-
-        Args:
-            x: Points to check, shape (batch_size, dim)
-
-        Returns:
-            Boolean mask, shape (batch_size,)
-        """
         ...
 
     def project_to_boundary(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Project points to the nearest boundary point.
-
-        Used for exit detection when a Brownian path leaves the domain.
-
-        Args:
-            x: Points to project, shape (batch_size, dim)
-
-        Returns:
-            Projected points on boundary, shape (batch_size, dim)
-        """
         ...
 
     def sample_interior(self, n: int, device: str = "cpu") -> torch.Tensor:
-        """
-        Sample random points uniformly from the domain interior.
-
-        Args:
-            n: Number of points to sample
-            device: Compute device
-
-        Returns:
-            Sampled points, shape (n, dim)
-        """
         ...
 
     def sample_boundary(self, n: int, device: str = "cpu") -> torch.Tensor:
-        """
-        Sample random points uniformly from the domain boundary.
+        ...
 
-        Args:
-            n: Number of points to sample
-            device: Compute device
-
-        Returns:
-            Sampled points, shape (n, dim)
-        """
+    def bounding_box(self, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+        """Axis-aligned bounds used by generic sampling utilities."""
         ...
 
 
 class Hypercube:
-    """
-    Axis-aligned hypercube domain [low, high]^dim.
-
-    This is the most common domain for rectangular PDE problems
-    like heat equations and Black-Scholes.
-    """
+    """Axis-aligned hypercube domain [low, high]^dim."""
 
     def __init__(self, low: float, high: float, dim: int):
-        """
-        Initialize hypercube domain.
-
-        Args:
-            low: Lower bound for all dimensions
-            high: Upper bound for all dimensions
-            dim: Spatial dimension
-        """
         if low >= high:
             raise ValueError(f"low ({low}) must be less than high ({high})")
         if dim < 1:
             raise ValueError(f"dim ({dim}) must be positive")
 
-        self._low = low
-        self._high = high
-        self._dim = dim
+        self._low = float(low)
+        self._high = float(high)
+        self._dim = int(dim)
 
     @property
     def dim(self) -> int:
@@ -112,59 +81,39 @@ class Hypercube:
         return self._high
 
     def contains(self, x: torch.Tensor) -> torch.Tensor:
-        """Check if points are strictly inside the hypercube."""
+        x = _as_points(x, self._dim)
         return ((x > self._low) & (x < self._high)).all(dim=-1)
 
     def project_to_boundary(self, x: torch.Tensor) -> torch.Tensor:
-        """Clamp points to hypercube boundary."""
+        x = _as_points(x, self._dim)
         return torch.clamp(x, self._low, self._high)
 
     def sample_interior(self, n: int, device: str = "cpu") -> torch.Tensor:
-        """Sample uniformly from hypercube interior."""
+        _check_sample_count(n)
         return torch.rand(n, self._dim, device=device) * (self._high - self._low) + self._low
 
     def sample_boundary(self, n: int, device: str = "cpu") -> torch.Tensor:
-        """
-        Sample uniformly from hypercube boundary (faces).
-
-        Strategy: Pick a random face (2*dim faces total), then sample
-        uniformly on that face.
-        """
+        _check_sample_count(n)
         points = torch.rand(n, self._dim, device=device) * (self._high - self._low) + self._low
-
-        # Pick which dimension to fix (which face)
         face_dim = torch.randint(0, self._dim, (n,), device=device)
-        # Pick which side (low or high)
-        face_side = torch.randint(0, 2, (n,), device=device).float()
-
-        # Set the face coordinate
-        for i in range(n):
-            d = face_dim[i].item()
-            points[i, d] = self._low if face_side[i] == 0 else self._high
-
+        face_side = torch.randint(0, 2, (n,), device=device)
+        rows = torch.arange(n, device=device)
+        points[rows, face_dim] = torch.where(face_side == 0, self._low, self._high)
         return points
+
+    def bounding_box(self, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+        low = torch.full((self._dim,), self._low, device=device)
+        high = torch.full((self._dim,), self._high, device=device)
+        return low, high
 
     def __repr__(self) -> str:
         return f"Hypercube(low={self._low}, high={self._high}, dim={self._dim})"
 
 
 class Hypersphere:
-    """
-    Hypersphere domain {x : |x - center| < radius}.
-
-    Useful for problems with radial symmetry or when testing
-    against known analytical solutions for spherical domains.
-    """
+    """Hypersphere domain {x : ||x - center|| < radius}."""
 
     def __init__(self, center: torch.Tensor | float, radius: float, dim: int):
-        """
-        Initialize hypersphere domain.
-
-        Args:
-            center: Center point (scalar for origin, or tensor of shape (dim,))
-            radius: Radius of the sphere
-            dim: Spatial dimension
-        """
         if radius <= 0:
             raise ValueError(f"radius ({radius}) must be positive")
         if dim < 1:
@@ -173,10 +122,13 @@ class Hypersphere:
         if isinstance(center, (int, float)):
             self._center = torch.full((dim,), float(center))
         else:
-            self._center = center.clone()
+            center = center.clone().detach().float()
+            if center.numel() != dim:
+                raise ValueError(f"center must have dim={dim}, got {center.numel()}")
+            self._center = center
 
-        self._radius = radius
-        self._dim = dim
+        self._radius = float(radius)
+        self._dim = int(dim)
 
     @property
     def dim(self) -> int:
@@ -191,61 +143,44 @@ class Hypersphere:
         return self._radius
 
     def contains(self, x: torch.Tensor) -> torch.Tensor:
-        """Check if points are strictly inside the hypersphere."""
+        x = _as_points(x, self._dim)
         center = self._center.to(x.device)
         dist_sq = ((x - center) ** 2).sum(dim=-1)
-        return dist_sq < self._radius ** 2
+        return dist_sq < self._radius**2
 
     def project_to_boundary(self, x: torch.Tensor) -> torch.Tensor:
-        """Project points to sphere surface (nearest point)."""
+        x = _as_points(x, self._dim)
         center = self._center.to(x.device)
         direction = x - center
-        dist = torch.norm(direction, dim=-1, keepdim=True)
-        # Avoid division by zero for points at center
-        dist = torch.clamp(dist, min=1e-10)
+        dist = torch.norm(direction, dim=-1, keepdim=True).clamp_min(1e-12)
         return center + direction / dist * self._radius
 
     def sample_interior(self, n: int, device: str = "cpu") -> torch.Tensor:
-        """
-        Sample uniformly from hypersphere interior.
-
-        Uses rejection sampling from bounding hypercube.
-        """
+        _check_sample_count(n)
         center = self._center.to(device)
-        samples = []
-        while len(samples) < n:
-            # Sample from bounding box
-            candidates = (torch.rand(n * 2, self._dim, device=device) * 2 - 1) * self._radius + center
-            inside = self.contains(candidates)
-            samples.extend(candidates[inside].tolist())
-
-        return torch.tensor(samples[:n], device=device)
+        directions = torch.randn(n, self._dim, device=device)
+        directions = directions / torch.norm(directions, dim=-1, keepdim=True).clamp_min(1e-12)
+        radii = torch.rand(n, 1, device=device).pow(1.0 / self._dim)
+        return center + directions * radii * self._radius
 
     def sample_boundary(self, n: int, device: str = "cpu") -> torch.Tensor:
-        """
-        Sample uniformly from hypersphere surface.
-
-        Strategy: Sample from standard normal, normalize to unit sphere,
-        then scale and translate.
-        """
+        _check_sample_count(n)
         center = self._center.to(device)
-        # Sample from standard normal
         x = torch.randn(n, self._dim, device=device)
-        # Normalize to unit sphere
-        x = x / torch.norm(x, dim=-1, keepdim=True)
-        # Scale and translate
+        x = x / torch.norm(x, dim=-1, keepdim=True).clamp_min(1e-12)
         return x * self._radius + center
 
+    def bounding_box(self, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+        center = self._center.to(device)
+        return center - self._radius, center + self._radius
+
     def __repr__(self) -> str:
-        return f"Hypersphere(center={self._center.tolist()}, radius={self._radius}, dim={self._dim})"
+        c = [round(v, 6) for v in self._center.tolist()]
+        return f"Hypersphere(center={c}, radius={self._radius}, dim={self._dim})"
 
 
 class Interval(Hypercube):
-    """
-    1D interval domain [low, high].
-
-    Convenience class for 1D problems.
-    """
+    """1D interval domain [low, high]."""
 
     def __init__(self, low: float, high: float):
         super().__init__(low, high, dim=1)
