@@ -13,7 +13,12 @@ from ml.data.domains import Domain
 from ml.models.pinn import FeynmanKacPINN
 
 from .losses import mc_mse_loss
-from .schedulers import SchedulerName, WarmupConfig, build_scheduler
+from .schedulers import (
+    SchedulerName,
+    WarmupConfig,
+    build_linear_warmup_scheduler,
+    build_scheduler,
+)
 
 
 class BoundaryFn(Protocol):
@@ -73,6 +78,15 @@ class FeynmanKacTrainer:
             total_steps=1,
         )
         self.warmup = warmup
+        self.warmup_scheduler = (
+            build_linear_warmup_scheduler(
+                optimizer=self.optimizer,
+                warmup_steps=warmup.steps,
+                start_factor=warmup.start_factor,
+            )
+            if warmup.steps > 0
+            else None
+        )
         self.max_grad_norm = max_grad_norm
         self.history = TrainerHistory()
         self.global_step = 0
@@ -109,6 +123,12 @@ class FeynmanKacTrainer:
         if self.max_grad_norm is not None:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
         self.optimizer.step()
+        if self.warmup_scheduler is not None and self.global_step < self.warmup.steps:
+            self.warmup_scheduler.step()
+        elif self.scheduler is not None and not isinstance(
+            self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
+        ):
+            self.scheduler.step()
         self.global_step += 1
 
         grad_norm = self._compute_grad_norm()
