@@ -115,6 +115,20 @@ class FeynmanKacTrainer:
         self.history.grad_norm.append(metrics.grad_norm)
         return metrics
 
+    @torch.no_grad()
+    def eval_step(self, batch_size: int, n_mc_paths: int) -> float:
+        """Evaluate current model against fresh MC labels."""
+        self.model.eval()
+        x, targets = self._sample_training_batch(batch_size=batch_size, n_mc_paths=n_mc_paths)
+        predictions = self.model(x).squeeze(-1)
+        loss = mc_mse_loss(predictions, targets).item()
+        return loss
+
+    def validate(self, batch_size: int, n_mc_paths: int) -> float:
+        val_loss = self.eval_step(batch_size=batch_size, n_mc_paths=n_mc_paths)
+        self.history.val_loss.append(val_loss)
+        return val_loss
+
 
 __all__ = [
     "FKProblem",
