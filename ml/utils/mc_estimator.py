@@ -101,3 +101,42 @@ class FeynmanKacSolver:
             upper=output.estimates + delta,
             confidence_level=confidence_level,
         )
+
+    def solve_adaptive(
+        self,
+        x: torch.Tensor,
+        initial_samples: int = 512,
+        max_samples: int = 65536,
+        target_rel_error: float = 0.05,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> tuple[SolveOutput, int]:
+        """
+        Adaptively increase sample size until relative standard error target is met.
+        """
+        if initial_samples <= 0:
+            raise ValueError("initial_samples must be positive")
+        if max_samples < initial_samples:
+            raise ValueError("max_samples must be >= initial_samples")
+        if target_rel_error <= 0:
+            raise ValueError("target_rel_error must be positive")
+
+        n_samples = initial_samples
+        best: Optional[SolveOutput] = None
+
+        while n_samples <= max_samples:
+            output = self.solve(
+                x=x,
+                n_samples=n_samples,
+                return_std=True,
+                progress_callback=progress_callback,
+            )
+            assert isinstance(output, SolveOutput)
+            best = output
+            denom = output.estimates.abs().clamp_min(1e-8)
+            rel_error = (output.std_errors / denom).max().item()
+            if rel_error <= target_rel_error:
+                return output, n_samples
+            n_samples *= 2
+
+        assert best is not None
+        return best, min(n_samples // 2, max_samples)
