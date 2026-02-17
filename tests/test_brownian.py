@@ -40,3 +40,21 @@ def test_exit_time_from_unit_sphere_matches_reference_value() -> None:
     expected = 1.0 / 6.0
     relative_error = abs(exit_times.mean().item() - expected) / expected
     assert relative_error < 0.10
+
+
+def test_heat_equation_value_at_midpoint() -> None:
+    domain = Interval(0.0, 1.0)
+    boundary_fn = lambda x: x.squeeze(-1)
+    x = torch.tensor([[0.5]])
+    estimates, _ = feynman_kac_estimate(
+        x=x,
+        boundary_fn=boundary_fn,
+        domain=domain,
+        n_paths=6000,
+        dt=0.0005,
+        max_steps=20000,
+        device="cpu",
+        antithetic=True,
+    )
+    rel_error = abs(estimates.item() - 0.5) / 0.5
+    assert rel_error < 0.05
