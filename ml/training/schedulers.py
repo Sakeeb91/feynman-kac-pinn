@@ -1,0 +1,50 @@
+"""Learning-rate scheduler utilities for PINN training."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+import torch
+
+SchedulerName = Literal["none", "cosine", "plateau"]
+
+
+@dataclass
+class WarmupConfig:
+    steps: int = 0
+    start_factor: float = 0.1
+
+
+def build_cosine_scheduler(
+    optimizer: torch.optim.Optimizer,
+    total_steps: int,
+    min_lr: float = 1e-6,
+) -> torch.optim.lr_scheduler.CosineAnnealingLR:
+    """Construct cosine annealing scheduler."""
+    t_max = max(1, total_steps)
+    return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=t_max, eta_min=min_lr)
+
+
+def build_plateau_scheduler(
+    optimizer: torch.optim.Optimizer,
+    factor: float = 0.5,
+    patience: int = 10,
+    min_lr: float = 1e-6,
+) -> torch.optim.lr_scheduler.ReduceLROnPlateau:
+    """Construct reduce-on-plateau scheduler."""
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=factor,
+        patience=patience,
+        min_lr=min_lr,
+    )
+
+
+__all__ = [
+    "SchedulerName",
+    "WarmupConfig",
+    "build_cosine_scheduler",
+    "build_plateau_scheduler",
+]
