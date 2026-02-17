@@ -17,6 +17,7 @@ class SimulationManager:
 
     _simulations: dict[str, dict] = field(default_factory=dict)
     _cancel_flags: dict[str, bool] = field(default_factory=dict)
+    _histories: dict[str, dict[str, list[float]]] = field(default_factory=dict)
     _lock: RLock = field(default_factory=RLock)
 
     def create(self, request: SimulationCreate) -> SimulationResponse:
@@ -36,6 +37,12 @@ class SimulationManager:
         with self._lock:
             self._simulations[simulation_id] = payload
             self._cancel_flags[simulation_id] = False
+            self._histories[simulation_id] = {
+                "train_loss": [],
+                "val_loss": [],
+                "lr": [],
+                "grad_norm": [],
+            }
         return SimulationResponse(**payload)
 
     def get(self, simulation_id: str) -> SimulationResponse | None:
@@ -92,6 +99,23 @@ class SimulationManager:
         with self._lock:
             payload = self._simulations.get(simulation_id)
             return None if payload is None else dict(payload)
+
+    def get_history(self, simulation_id: str) -> dict[str, list[float]] | None:
+        with self._lock:
+            history = self._histories.get(simulation_id)
+            if history is None:
+                return None
+            return {k: list(v) for k, v in history.items()}
+
+    def set_history(self, simulation_id: str, history: dict[str, list[float]]) -> None:
+        with self._lock:
+            if simulation_id in self._histories:
+                self._histories[simulation_id] = {
+                    "train_loss": list(history.get("train_loss", [])),
+                    "val_loss": list(history.get("val_loss", [])),
+                    "lr": list(history.get("lr", [])),
+                    "grad_norm": list(history.get("grad_norm", [])),
+                }
 
     async def run_simulation(self, simulation_id: str) -> None:
         """
