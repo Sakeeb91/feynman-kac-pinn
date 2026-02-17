@@ -11,6 +11,7 @@ from ml.problems import (
     deserialize_problem,
     serialize_problem,
 )
+from ml.training.trainer import FKProblem
 
 
 def test_black_scholes_problem_instantiates() -> None:
@@ -111,3 +112,13 @@ def test_default_configs_create_problems() -> None:
     for key, params in configs.items():
         problem = create_problem(key, **params)
         assert problem.dimension > 0
+
+
+def test_fkproblem_adapter_from_problem() -> None:
+    problem = HarmonicOscillatorND(dim=2)
+    fk_problem = FKProblem.from_problem(problem)
+    x = torch.randn(8, 2)
+    boundary = fk_problem.boundary_condition(x)
+    potential = fk_problem.potential(x) if fk_problem.potential is not None else None
+    assert boundary.shape == (8,)
+    assert potential is not None and potential.shape == (8,)
