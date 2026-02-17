@@ -154,8 +154,9 @@ Ground state of quantum harmonic oscillator:
 ## Roadmap
 
 See [IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for detailed phase breakdown.
+- Phase 1 derivation and API notes: [PHASE1_DERIVATION.md](docs/PHASE1_DERIVATION.md)
 
-- [ ] Phase 1: Core random walk engine
+- [x] Phase 1: Core random walk engine
 - [ ] Phase 2: Neural network architecture
 - [ ] Phase 3: FastAPI backend
 - [ ] Phase 4: React frontend
