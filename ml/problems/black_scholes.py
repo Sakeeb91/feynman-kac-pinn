@@ -100,6 +100,10 @@ class BlackScholesND(Problem):
         corr = self.correlation_matrix(device=device, dtype=dtype)
         return torch.linalg.cholesky(corr)
 
+    @staticmethod
+    def _normal_cdf(x: torch.Tensor) -> torch.Tensor:
+        return 0.5 * (1.0 + torch.erf(x / (2.0**0.5)))
+
     def boundary_condition(self, x: torch.Tensor) -> torch.Tensor:
         prices = self._price_from_log(x)
         basket_price = prices.mean(dim=-1)
@@ -113,6 +117,24 @@ class BlackScholesND(Problem):
             device=x.device,
             dtype=x.dtype,
         )
+
+    def analytical_solution(self, x: torch.Tensor) -> torch.Tensor | None:
+        """Closed-form Black-Scholes formula for the 1D case only."""
+        if self.dimension != 1:
+            return None
+        x = self.validate_points(x)
+        s = self._price_from_log(x).squeeze(-1)
+        k = torch.as_tensor(self._params.strike, dtype=s.dtype, device=s.device)
+        r = torch.as_tensor(self._params.risk_free_rate, dtype=s.dtype, device=s.device)
+        sigma = torch.as_tensor(self._params.volatility, dtype=s.dtype, device=s.device)
+        t = torch.as_tensor(self._params.maturity, dtype=s.dtype, device=s.device)
+        sqrt_t = torch.sqrt(t)
+        d1 = (torch.log(s / k) + (r + 0.5 * sigma**2) * t) / (sigma * sqrt_t)
+        d2 = d1 - sigma * sqrt_t
+        discount = torch.exp(-r * t)
+        if self._params.option_type == "call":
+            return s * self._normal_cdf(d1) - k * discount * self._normal_cdf(d2)
+        return k * discount * self._normal_cdf(-d2) - s * self._normal_cdf(-d1)
 
     def get_parameters(self) -> dict[str, float | int | str]:
         return self._params.__dict__.copy()
