@@ -349,6 +349,10 @@ def feynman_kac_estimate(
     dt: float = 0.001,
     max_steps: int = 10000,
     device: Optional[str] = None,
+    antithetic: bool = False,
+    stratified: bool = False,
+    batch_size: Optional[int] = None,
+    progress_callback: Optional[ProgressCallback] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute Feynman-Kac Monte Carlo estimate of PDE solution.
@@ -394,8 +398,22 @@ def feynman_kac_estimate(
         x0 = x[i:i+1].expand(n_paths, -1).clone()
 
         # Simulate paths
-        exit_points, exit_times, path_integrals = simulate_brownian_paths(
-            x0, dt, max_steps, domain, potential_fn, device
+        def _point_progress(step: int, total_steps: int, active: int) -> None:
+            if progress_callback is None:
+                return
+            progress_callback(step, total_steps, active)
+
+        exit_points, _, path_integrals = simulate_brownian_paths_batched(
+            x0=x0,
+            dt=dt,
+            max_steps=max_steps,
+            domain=domain,
+            potential_fn=potential_fn,
+            device=device,
+            batch_size=batch_size,
+            antithetic=antithetic,
+            stratified=stratified,
+            progress_callback=_point_progress,
         )
 
         # Compute Feynman-Kac functional
