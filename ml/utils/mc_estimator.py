@@ -21,6 +21,13 @@ class SolveOutput:
     std_errors: torch.Tensor
 
 
+@dataclass
+class ConfidenceInterval:
+    lower: torch.Tensor
+    upper: torch.Tensor
+    confidence_level: float
+
+
 class FeynmanKacSolver:
     """High-level solver using Feynman-Kac Monte Carlo."""
 
@@ -71,3 +78,26 @@ class FeynmanKacSolver:
         if return_std:
             return SolveOutput(estimates=estimates, std_errors=std_errors)
         return estimates
+
+    def confidence_interval(
+        self,
+        output: SolveOutput,
+        confidence_level: float = 0.95,
+    ) -> ConfidenceInterval:
+        """Compute Gaussian confidence interval for Monte Carlo estimates."""
+        if not 0.0 < confidence_level < 1.0:
+            raise ValueError("confidence_level must be in (0, 1)")
+        z_values = {
+            0.80: 1.2816,
+            0.90: 1.6449,
+            0.95: 1.9600,
+            0.98: 2.3263,
+            0.99: 2.5758,
+        }
+        z = z_values.get(round(confidence_level, 2), 1.9600)
+        delta = z * output.std_errors
+        return ConfidenceInterval(
+            lower=output.estimates - delta,
+            upper=output.estimates + delta,
+            confidence_level=confidence_level,
+        )
