@@ -87,3 +87,25 @@ class NeumannBC(FluxBoundaryCondition):
         if values.dim() > 1 and values.shape[-1] == 1:
             values = values.squeeze(-1)
         return values
+
+
+def sample_boundary_points(domain: Domain, n: int, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+    """Sample boundary points and estimated outward normals."""
+    points = domain.sample_boundary(n=n, device=device)
+    normals = estimate_outward_normals(domain, points)
+    return points, normals
+
+
+def sample_boundary_values(
+    domain: Domain,
+    boundary_condition: BoundaryCondition,
+    n: int,
+    device: str = "cpu",
+) -> dict[str, torch.Tensor]:
+    """Sample boundary points and evaluate provided boundary condition."""
+    points, normals = sample_boundary_points(domain=domain, n=n, device=device)
+    if isinstance(boundary_condition, FluxBoundaryCondition):
+        values = boundary_condition(points, normals=normals)
+    else:
+        values = boundary_condition(points)
+    return {"points": points, "normals": normals, "values": values}
