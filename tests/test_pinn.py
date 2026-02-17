@@ -4,6 +4,7 @@ torch = pytest.importorskip("torch")
 
 from ml.models.pinn import FeynmanKacPINN
 from ml.models.activations import available_activations, get_activation, swish
+from ml.models.initialization import init_linear_layer
 
 
 def test_forward_output_shape() -> None:
@@ -32,3 +33,15 @@ def test_activation_registry_contains_required_options() -> None:
 def test_unknown_activation_raises() -> None:
     with pytest.raises(ValueError):
         get_activation("unknown")
+
+
+def test_initialization_sets_zero_bias() -> None:
+    layer = torch.nn.Linear(4, 3)
+    init_linear_layer(layer, mode="xavier")
+    assert torch.allclose(layer.bias, torch.zeros_like(layer.bias))
+
+
+def test_he_initialization_runs() -> None:
+    layer = torch.nn.Linear(4, 3)
+    init_linear_layer(layer, mode="he")
+    assert layer.weight.std().item() > 0.0
