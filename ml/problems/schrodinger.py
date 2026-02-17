@@ -69,12 +69,24 @@ class HarmonicOscillatorND(Problem):
     def ground_state_energy(self) -> float:
         return 0.5 * self.dimension * self._params.hbar * self._params.omega
 
+    @property
+    def alpha(self) -> float:
+        """Gaussian exponent coefficient m*omega/hbar."""
+        return (self._params.mass * self._params.omega) / self._params.hbar
+
     def analytical_solution(self, x: torch.Tensor) -> torch.Tensor:
         x = self.validate_points(x)
-        alpha = (self._params.mass * self._params.omega) / self._params.hbar
+        alpha = self.alpha
         norm = (alpha / torch.pi) ** (self.dimension / 4)
         radius_sq = (x**2).sum(dim=-1)
         return norm * torch.exp(-0.5 * alpha * radius_sq)
+
+    def expected_boundary_magnitude(self) -> float:
+        """Approximate amplitude at domain boundary radius."""
+        radius_sq = self._params.domain_radius**2
+        alpha = self.alpha
+        norm = (alpha / torch.pi) ** (self.dimension / 4)
+        return float(norm * torch.exp(torch.tensor(-0.5 * alpha * radius_sq)))
 
     def get_parameters(self) -> dict[str, float | int]:
         return self._params.__dict__.copy()
