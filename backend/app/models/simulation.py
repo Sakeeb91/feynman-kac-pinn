@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -24,11 +24,11 @@ class SimulationCreate(BaseModel):
 
 
 class SimulationMetrics(BaseModel):
-    loss: float | None = None
-    val_loss: float | None = None
-    lr: float | None = None
-    grad_norm: float | None = None
-    error: str | None = None
+    loss: Optional[float] = None
+    val_loss: Optional[float] = None
+    lr: Optional[float] = None
+    grad_norm: Optional[float] = None
+    error: Optional[str] = None
 
 
 class SimulationResponse(BaseModel):
@@ -38,7 +38,7 @@ class SimulationResponse(BaseModel):
     progress: float = Field(default=0.0, ge=0.0, le=1.0)
     created_at: datetime
     updated_at: datetime
-    metrics: SimulationMetrics | None = None
+    metrics: Optional[SimulationMetrics] = None
 
 
 class SimulationListResponse(BaseModel):

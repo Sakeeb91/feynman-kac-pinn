@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,7 @@ class SimulationResult(BaseModel):
     simulation_status: SimulationStatus
     result_status: ResultStatus
     progress: float = Field(default=0.0, ge=0.0, le=1.0)
-    metrics: SimulationMetrics | None = None
+    metrics: Optional[SimulationMetrics] = None
     training_history: TrainingHistory = Field(default_factory=TrainingHistory)
     visualization: dict[str, Any] = Field(default_factory=dict)
     updated_at: datetime
