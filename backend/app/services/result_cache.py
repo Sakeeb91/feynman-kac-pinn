@@ -23,5 +23,24 @@ class ResultCache:
         with self._lock:
             self._results[result.simulation_id] = result
 
+    def delete(self, simulation_id: str) -> bool:
+        with self._lock:
+            if simulation_id not in self._results:
+                return False
+            del self._results[simulation_id]
+            return True
+
+    def list_ids(self) -> list[str]:
+        with self._lock:
+            return sorted(self._results.keys())
+
+    def list_all(self) -> list[SimulationResult]:
+        with self._lock:
+            return [self._results[key] for key in sorted(self._results)]
+
+    def clear(self) -> None:
+        with self._lock:
+            self._results.clear()
+
 
 result_cache = ResultCache()
