@@ -408,7 +408,8 @@ def feynman_kac_estimate(
         def _point_progress(step: int, total_steps: int, active: int) -> None:
             if progress_callback is None:
                 return
-            progress_callback(step, total_steps, active)
+            global_step = i * max_steps + step
+            progress_callback(global_step, n_points * max_steps, active)
 
         exit_points, _, path_integrals = simulate_brownian_paths_batched(
             x0=x0,
