@@ -67,6 +67,47 @@ def get_device() -> str:
     return "cpu"
 
 
+def _stratified_normal(
+    n_samples: int,
+    dim: int,
+    device: str,
+    dtype: torch.dtype,
+    generator: Optional[torch.Generator] = None,
+) -> torch.Tensor:
+    """Draw approximately stratified N(0,1) samples via inverse-CDF sampling."""
+    u = (torch.arange(n_samples, device=device, dtype=dtype).unsqueeze(-1) + torch.rand(
+        n_samples, dim, device=device, dtype=dtype, generator=generator
+    )) / n_samples
+    perm = torch.stack([torch.randperm(n_samples, device=device, generator=generator) for _ in range(dim)], dim=1)
+    u = u[perm, torch.arange(dim, device=device)]
+    z = torch.erfinv(2 * u - 1) * (2.0 ** 0.5)
+    return z
+
+
+def _sample_normal_increments(
+    n_active: int,
+    dim: int,
+    sqrt_dt: float,
+    device: str,
+    dtype: torch.dtype,
+    stratified: bool,
+    antithetic: bool,
+    generator: Optional[torch.Generator] = None,
+) -> torch.Tensor:
+    if antithetic:
+        half = (n_active + 1) // 2
+        if stratified:
+            base = _stratified_normal(half, dim, device, dtype, generator)
+        else:
+            base = torch.randn(half, dim, device=device, dtype=dtype, generator=generator)
+        increments = torch.cat([base, -base], dim=0)[:n_active]
+    elif stratified:
+        increments = _stratified_normal(n_active, dim, device, dtype, generator)
+    else:
+        increments = torch.randn(n_active, dim, device=device, dtype=dtype, generator=generator)
+    return increments * sqrt_dt
+
+
 def simulate_brownian_paths(
     x0: torch.Tensor,
     dt: float,
