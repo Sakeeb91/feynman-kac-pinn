@@ -179,6 +179,88 @@ class Hypersphere:
         return f"Hypersphere(center={c}, radius={self._radius}, dim={self._dim})"
 
 
+class HyperEllipsoid:
+    """Hyperellipsoid domain {(x-c)^T D^{-2} (x-c) < 1} with axis radii D."""
+
+    def __init__(self, center: torch.Tensor | float, radii: torch.Tensor | float, dim: int):
+        if dim < 1:
+            raise ValueError(f"dim ({dim}) must be positive")
+
+        if isinstance(center, (int, float)):
+            self._center = torch.full((dim,), float(center))
+        else:
+            center = center.clone().detach().float()
+            if center.numel() != dim:
+                raise ValueError(f"center must have dim={dim}, got {center.numel()}")
+            self._center = center
+
+        if isinstance(radii, (int, float)):
+            self._radii = torch.full((dim,), float(radii))
+        else:
+            radii = radii.clone().detach().float()
+            if radii.numel() != dim:
+                raise ValueError(f"radii must have dim={dim}, got {radii.numel()}")
+            self._radii = radii
+
+        if (self._radii <= 0).any():
+            raise ValueError("all radii must be positive")
+        self._dim = int(dim)
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    @property
+    def center(self) -> torch.Tensor:
+        return self._center
+
+    @property
+    def radii(self) -> torch.Tensor:
+        return self._radii
+
+    def contains(self, x: torch.Tensor) -> torch.Tensor:
+        x = _as_points(x, self._dim)
+        center = self._center.to(x.device)
+        radii = self._radii.to(x.device)
+        scaled = (x - center) / radii
+        return (scaled**2).sum(dim=-1) < 1.0
+
+    def project_to_boundary(self, x: torch.Tensor) -> torch.Tensor:
+        x = _as_points(x, self._dim)
+        center = self._center.to(x.device)
+        radii = self._radii.to(x.device)
+        delta = x - center
+        norm = torch.sqrt(((delta / radii) ** 2).sum(dim=-1, keepdim=True)).clamp_min(1e-12)
+        return center + delta / norm
+
+    def sample_interior(self, n: int, device: str = "cpu") -> torch.Tensor:
+        _check_sample_count(n)
+        center = self._center.to(device)
+        radii = self._radii.to(device)
+        directions = torch.randn(n, self._dim, device=device)
+        directions = directions / torch.norm(directions, dim=-1, keepdim=True).clamp_min(1e-12)
+        scales = torch.rand(n, 1, device=device).pow(1.0 / self._dim)
+        return center + directions * radii * scales
+
+    def sample_boundary(self, n: int, device: str = "cpu") -> torch.Tensor:
+        _check_sample_count(n)
+        center = self._center.to(device)
+        radii = self._radii.to(device)
+        directions = torch.randn(n, self._dim, device=device)
+        directions = directions / torch.norm(directions, dim=-1, keepdim=True).clamp_min(1e-12)
+        return center + directions * radii
+
+    def bounding_box(self, device: str = "cpu") -> tuple[torch.Tensor, torch.Tensor]:
+        center = self._center.to(device)
+        radii = self._radii.to(device)
+        return center - radii, center + radii
+
+    def __repr__(self) -> str:
+        c = [round(v, 6) for v in self._center.tolist()]
+        r = [round(v, 6) for v in self._radii.tolist()]
+        return f"HyperEllipsoid(center={c}, radii={r}, dim={self._dim})"
+
+
 class Interval(Hypercube):
     """1D interval domain [low, high]."""
 
