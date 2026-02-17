@@ -151,6 +151,8 @@ class FeynmanKacTrainer:
     def validate(self, batch_size: int, n_mc_paths: int) -> float:
         val_loss = self.eval_step(batch_size=batch_size, n_mc_paths=n_mc_paths)
         self.history.val_loss.append(val_loss)
+        if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            self.scheduler.step(val_loss)
         return val_loss
 
 
