@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from threading import RLock
 from uuid import uuid4
@@ -91,6 +92,31 @@ class SimulationManager:
         with self._lock:
             payload = self._simulations.get(simulation_id)
             return None if payload is None else dict(payload)
+
+    async def run_simulation(self, simulation_id: str) -> None:
+        """
+        Execute a lightweight async simulation loop.
+
+        This loop is intentionally minimal and gets replaced by full ML execution
+        in a later commit; it currently provides non-blocking lifecycle behavior.
+        """
+        payload = self.get_raw(simulation_id)
+        if payload is None:
+            return
+        total_steps = int(payload["training_config"]["n_steps"])
+        self.update_progress(simulation_id, status=SimulationStatus.RUNNING, progress=0.0)
+        for step in range(total_steps):
+            if self.is_cancelled(simulation_id):
+                self.update_progress(simulation_id, status=SimulationStatus.CANCELLED)
+                return
+            await asyncio.sleep(0)
+            progress = (step + 1) / total_steps
+            self.update_progress(
+                simulation_id,
+                progress=progress,
+                metrics={"loss": float(total_steps - step) / total_steps},
+            )
+        self.update_progress(simulation_id, status=SimulationStatus.COMPLETED, progress=1.0)
 
 
 simulation_manager = SimulationManager()
