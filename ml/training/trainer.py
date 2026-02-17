@@ -11,6 +11,7 @@ import torch
 from ml.data.brownian import feynman_kac_estimate, get_device
 from ml.data.domains import Domain
 from ml.models.pinn import FeynmanKacPINN
+from ml.problems.base import Problem
 
 from .losses import mc_mse_loss
 from .schedulers import (
@@ -47,6 +48,15 @@ class FKProblem:
     domain: Domain
     boundary_condition: BoundaryFn
     potential: Optional[PotentialFn] = None
+
+    @classmethod
+    def from_problem(cls, problem: Problem) -> "FKProblem":
+        """Create trainer-ready problem wrapper from `ml.problems.Problem`."""
+        return cls(
+            domain=problem.domain,
+            boundary_condition=problem.boundary_condition,
+            potential=problem.potential,
+        )
 
 
 @dataclass
